@@ -1,0 +1,14 @@
+# docker-compose.yml
+version: "3.8"
+services:
+  user:
+    build: ./user-service
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  order:
+    build: ./order-service
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
