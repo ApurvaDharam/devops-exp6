@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
 
   order:
-    image: idkappy/user-service:latest
+    image: idkappy/order-service:latest
     build: ./order-service
     ports:
       - "3002:3002"
