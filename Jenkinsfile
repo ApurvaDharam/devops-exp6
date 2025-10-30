@@ -2,8 +2,8 @@ pipeline {
   agent any
 
   environment {
-    DOCKERHUB_CRED = 'dockerhub-credentials' // Jenkins credential id for Docker Hub (username/password)
-    DOCKERHUB_REPO = 'idkappy' 
+    DOCKERHUB_CRED = 'dockerhub-credentials'   // Jenkins credentials ID
+    DOCKERHUB_REPO = 'idkappy'                 // Docker Hub username/repo
   }
 
   stages {
@@ -13,20 +13,23 @@ pipeline {
       }
     }
 
-    stage('Install & Test - user-service') {
-      steps {
-        dir('user-service') {
-          sh 'npm ci'
-          sh 'npm test' // runs Jest tests
+    stage('Install & Test Services') {
+      parallel {
+        stage('User Service Tests') {
+          steps {
+            dir('user-service') {
+              sh 'npm install'
+              sh 'npm test'
+            }
+          }
         }
-      }
-    }
-
-    stage('Install & Test - order-service') {
-      steps {
-        dir('order-service') {
-          sh 'npm ci'
-          sh 'npm test'
+        stage('Order Service Tests') {
+          steps {
+            dir('order-service') {
+              sh 'npm install'
+              sh 'npm test'
+            }
+          }
         }
       }
     }
@@ -34,67 +37,70 @@ pipeline {
     stage('Build Docker Images') {
       steps {
         script {
-          def userImage = "${env.DOCKERHUB_REPO}/user-service:${env.BUILD_NUMBER}"
-          def orderImage = "${env.DOCKERHUB_REPO}/order-service:${env.BUILD_NUMBER}"
+          env.USER_IMAGE = "${DOCKERHUB_REPO}/user-service:${BUILD_NUMBER}"
+          env.ORDER_IMAGE = "${DOCKERHUB_REPO}/order-service:${BUILD_NUMBER}"
 
-          // Build images
           dir('user-service') {
-            sh "docker build -t ${userImage} ."
+            sh "docker build -t ${env.USER_IMAGE} ."
           }
           dir('order-service') {
-            sh "docker build -t ${orderImage} ."
+            sh "docker build -t ${env.ORDER_IMAGE} ."
           }
-
-          // Save image names for later stages
-          env.USER_IMAGE = userImage
-          env.ORDER_IMAGE = orderImage
         }
       }
     }
 
     stage('Push to Docker Hub') {
       steps {
-        withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CRED, usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
-          sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
-          sh "docker push ${env.USER_IMAGE}"
-          sh "docker push ${env.ORDER_IMAGE}"
-          sh 'docker logout'
+        script {
+          withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CRED}", usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
+            sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
+            sh "docker push ${env.USER_IMAGE}"
+            sh "docker push ${env.ORDER_IMAGE}"
+            sh 'docker logout'
+          }
         }
       }
     }
 
-    stage('Deploy to Host (docker-compose)') {
+    stage('Deploy to Docker Compose') {
       steps {
         script {
-          // Option A: If Jenkins can ssh to docker host and deploy docker-compose
-          // Put SSH private key in Jenkins as "deploy-ssh-key" and host in DEPLOY_HOST env if required
-
-          // For a simple demo: run docker-compose on the same machine (Jenkins agent) if allowed:
+          // dynamically generate docker-compose.yml with new image tags
           sh '''
-            # create a temporary folder for docker-compose
-            rm -rf deploy_tmp || true
-            mkdir deploy_tmp
-            cp -r user-service order-service docker-compose.yml deploy_tmp/
-            cd deploy_tmp
-            # Update docker-compose to use built images by tag (BUILD_NUMBER)
-            sed -i "s|<DOCKERHUB_USERNAME>|${DOCKERHUB_REPO}|g" docker-compose.yml
-            docker-compose up -d --force-recreate
+          cat > docker-compose.yml <<EOF
+          version: "3.8"
+          services:
+            user:
+              image: ${USER_IMAGE}
+              ports:
+                - "3001:3001"
+              restart: unless-stopped
+
+            order:
+              image: ${ORDER_IMAGE}
+              ports:
+                - "3002:3002"
+              restart: unless-stopped
+          EOF
+
+          docker-compose down || true
+          docker-compose up -d --force-recreate
           '''
         }
       }
     }
 
-    stage('Verify') {
+    stage('Verify Deployment') {
       steps {
         script {
-          // Simple verification via curl requests to local ports on the agent
           sh '''
-            echo "Waiting for services to come up..."
-            sleep 5
-            echo "User /health:"
-            curl -sS http://localhost:3001/health || true
-            echo "\\nOrder /health:"
-            curl -sS http://localhost:3002/health || true
+          echo "Verifying services..."
+          sleep 5
+          echo "User Service Health:"
+          curl -s http://localhost:3001/health || echo "User service not responding."
+          echo "Order Service Health:"
+          curl -s http://localhost:3002/health || echo "Order service not responding."
           '''
         }
       }
@@ -102,11 +108,14 @@ pipeline {
   }
 
   post {
-    failure {
-      echo "Pipeline failed. Check logs."
-    }
     success {
-      echo "Pipeline successful. Images: ${env.USER_IMAGE} , ${env.ORDER_IMAGE}"
+      echo "✅ Pipeline completed successfully!"
+      echo "Images pushed:"
+      echo " - ${env.USER_IMAGE}"
+      echo " - ${env.ORDER_IMAGE}"
+    }
+    failure {
+      echo "❌ Pipeline failed. Please check the logs."
     }
   }
 }

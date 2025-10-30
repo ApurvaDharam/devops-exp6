@@ -2,14 +2,14 @@
 version: "3.8"
 services:
   user:
-    image: idkappy/user-service:latest
+    image: idkappy/user-service:${BUILD_NUMBER}
     build: ./user-service
     ports:
       - "3001:3001"
     restart: unless-stopped
 
   order:
-    image: idkappy/order-service:latest
+    image: idkappy/order-service:${BUILD_NUMBER}
     build: ./order-service
     ports:
       - "3002:3002"
