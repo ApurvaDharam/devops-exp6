@@ -48,21 +48,21 @@ jobs:
         with:
           version: 'latest'
 
-      # 7️⃣ Configure kubeconfig
-      - name: Configure Kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+      # # 7️⃣ Configure kubeconfig
+      # - name: Configure Kubeconfig
+      #   run: |
+      #     mkdir -p ~/.kube
+      #     echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
 
-      # 8️⃣ Deploy to Kubernetes
-      - name: Deploy to Kubernetes
-        run: |
-          kubectl apply -f deployment.yaml
-          kubectl apply -f service.yaml
-          kubectl rollout status deployment/user-deployment
+      # # 8️⃣ Deploy to Kubernetes
+      # - name: Deploy to Kubernetes
+      #   run: |
+      #     kubectl apply -f deployment.yaml
+      #     kubectl apply -f service.yaml
+      #     kubectl rollout status deployment/user-deployment
 
-      # 9️⃣ Verify deployment
-      - name: Verify running pods and services
-        run: |
-          kubectl get pods
-          kubectl get services
+      # # 9️⃣ Verify deployment
+      # - name: Verify running pods and services
+      #   run: |
+      #     kubectl get pods
+      #     kubectl get services
